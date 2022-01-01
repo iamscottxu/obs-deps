@@ -18,7 +18,7 @@ jobs:
     runs-on: [ubuntu-20.04]
     strategy:
       matrix:
-        arch: ['x86', 'x86_64']
+        arch: ['x86', 'x86_64', 'arm64']
     env:
       CACHE_REVISION: '01'
       MBEDTLS_VERSION: '2.24.0'
@@ -101,6 +101,7 @@ jobs:
           path: |
             !${{ github.workspace }}/windows_cross_build_temp/win32
             !${{ github.workspace }}/windows_cross_build_temp/win64
+            !${{ github.workspace }}/windows_cross_build_temp/arm64
             !${{ github.workspace }}/windows_cross_build_temp/ffmpeg
             ${{ github.workspace }}/windows_cross_build_temp
           key: ${{ runner.os }}-${{ env.CACHE_NAME }}-${{ env.FFMPEG_DEP_HASH }}
@@ -268,7 +269,7 @@ jobs:
     runs-on: [windows-2019]
     strategy:
       matrix:
-        arch: ['32', '64']
+        arch: ['32-bit', '64-bit', 'arm64']
     env:
       CACHE_REVISION: '01'
       MBEDTLS_VERSION: '2.24.0'
@@ -495,6 +496,7 @@ jobs:
 
       - name: 'Restore nasm from cache'
         id: nasm-cache
+        if: ${{ matrix.arch }} != 'arm64'
         uses: actions/cache@v2.1.6
         env:
           CACHE_NAME: 'nasm-${{ matrix.arch }}-${{ env.CACHE_REVISION }}'
@@ -503,11 +505,11 @@ jobs:
           key: ${{ runner.os }}-${{ env.CACHE_NAME }}-${{ env.NASM_VERSION }}
 
       - name: 'Build dependency nasm'
-        if: steps.nasm-cache.outputs.cache-hit != 'true'
+        if: steps.nasm-cache.outputs.cache-hit != 'true' && ${{ matrix.arch }} != 'arm64'
         run: CI/windows/build_nasm.ps1 -SkipDependencyChecks -BuildArch ${{ matrix.arch }}-bit
 
       - name: 'Install dependency nasm'
-        if: steps.nasm-cache.outputs.cache-hit == 'true'
+        if: steps.nasm-cache.outputs.cache-hit == 'true' && ${{ matrix.arch }} != 'arm64'
         run: CI/windows/build_nasm.ps1 -SkipDependencyChecks -BuildArch ${{ matrix.arch }}-bit -Install
 
       - name: 'Restore swig from cache'
@@ -602,6 +604,13 @@ jobs:
         with:
           name: 'windows-cross-deps-${{ env.CURRENT_DATE }}-x86_64.tar.xz'
           path: ${{ github.workspace }}/windows
+          
+      - name: 'Download cross arm64 artifact'
+        if: ${{ github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1' }}
+        uses: actions/download-artifact@v2
+        with:
+          name: 'windows-cross-deps-${{ env.CURRENT_DATE }}-arm64.tar.xz'
+          path: ${{ github.workspace }}/windows
 
       - name: 'Download native x86 artifact'
         if: ${{ github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1' }}
@@ -616,6 +625,13 @@ jobs:
         with:
           name: 'windows-native-deps-${{ env.CURRENT_DATE }}-win64.tar.gz'
           path: ${{ github.workspace }}/windows
+          
+      - name: 'Download native arm64 artifact'
+        if: ${{ github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1' }}
+        uses: actions/download-artifact@v2
+        with:
+          name: 'windows-native-deps-${{ env.CURRENT_DATE }}-arm64.tar.gz'
+          path: ${{ github.workspace }}/windows
 
       - name: 'Extract artifacts'
         if: ${{ github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1' }}
@@ -626,8 +642,10 @@ jobs:
           echo "FILE_NAME=${FILE_NAME}" >> $GITHUB_ENV
           ARTIFACT_WIN32_CROSS=$(find . -name "windows-cross-deps-${CURRENT_DATE}-x86.tar.xz" | head -1)
           ARTIFACT_WIN64_CROSS=$(find . -name "windows-cross-deps-${CURRENT_DATE}-x86_64.tar.xz" | head -1)
+          ARTIFACT_ARM64_CROSS=$(find . -name "windows-cross-deps-${CURRENT_DATE}-arm64.tar.xz" | head -1)
           ARTIFACT_WIN32_NATIVE=$(find . -name "windows-native-deps-${CURRENT_DATE}-win32.tar.gz" | head -1)
           ARTIFACT_WIN64_NATIVE=$(find . -name "windows-native-deps-${CURRENT_DATE}-win64.tar.gz" | head -1)
+          ARTIFACT_ARM64_NATIVE=$(find . -name "windows-native-deps-${CURRENT_DATE}-arm64.tar.gz" | head -1)
 
           mkdir -p obs-cross-deps/x86
           mkdir -p obs-cross-deps/x86_64
@@ -685,7 +703,7 @@ jobs:
           name: windows-deps-${{ env.CURRENT_DATE }}
 
       - name: 'Zip Windows deps artifact'
-        run: 7z a windows-deps-${{ env.CURRENT_DATE }}.zip win32 win64 -mx9
+        run: 7z a windows-deps-${{ env.CURRENT_DATE }}.zip win32 win64 arm64 -mx9
 
       - name: 'Upload Windows deps package to release'
         uses: actions/upload-release-asset@v1
